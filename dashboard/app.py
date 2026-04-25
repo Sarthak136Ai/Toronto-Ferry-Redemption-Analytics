@@ -25,7 +25,7 @@ import os, sys
 # ── Path setup ──────────────────────────────────────────────────────────────
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SRC_DIR  = os.path.join(BASE_DIR, '..', 'src')
-DATA_PATH = os.path.join(BASE_DIR, '..', 'data', 'Toronto_Island_Ferry_Tickets.csv')
+DATA_PATH = os.path.join(BASE_DIR, '..', 'data/raw', 'Toronto_Island_Ferry_Tickets.csv')
 sys.path.insert(0, SRC_DIR)
 
 from data_loader import load_data
