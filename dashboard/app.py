@@ -221,7 +221,7 @@ from kpi_calculator import compute_all_kpis as _ckpi
 fkpi = _ckpi(dff) if len(dff) > 100 else kpis
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
-t1, t2, t3, t4, t5, t6 = st.tabs([
+t1, t2, t3, t4, t6, t5 = st.tabs([
     "📊 KPI Overview",
     "📈 Utilization Timeline",
     "🔥 Congestion & Idle",
