@@ -16,11 +16,12 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import os, sys
 
 BASE_DIR  = os.path.dirname(os.path.abspath(__file__))
 SRC_DIR   = os.path.join(BASE_DIR, '..', 'src')
-DATA_PATH = os.path.join(BASE_DIR, '..', 'data', 'Toronto_Island_Ferry_Tickets.csv')
+DATA_PATH = os.path.join(BASE_DIR, '..', 'data', 'raw', 'Toronto_Island_Ferry_Tickets.csv')
 sys.path.insert(0, SRC_DIR)
 
 from data_loader import load_data
@@ -166,14 +167,38 @@ with st.sidebar:
     st.caption("Toronto Island Ferry Terminal")
     st.divider()
 
-    st.markdown("**Filters**")
-    years = sorted(df15['year'].unique())
-    sel_years = st.multiselect("Year(s)", years, default=years)
+    st.markdown("**📅 Date & Season Filters**")
+
+    # Date range picker
+    min_date = df15["Timestamp"].min().date()
+    max_date = df15["Timestamp"].max().date()
+    date_range = st.date_input(
+        "Date Range",
+        value=(min_date, max_date),
+        min_value=min_date,
+        max_value=max_date,
+    )
+    if isinstance(date_range, (list, tuple)) and len(date_range) == 2:
+        sel_start = pd.Timestamp(date_range[0])
+        sel_end   = pd.Timestamp(date_range[1]) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
+    else:
+        sel_start = pd.Timestamp(min_date)
+        sel_end   = pd.Timestamp(max_date)
+
     sel_season = st.selectbox("Season", ["All"] + SEASON_ORDER)
-    day_type = st.radio("Day Type", ["All", "Weekdays Only", "Weekends Only"])
+    day_type   = st.radio("Day Type", ["All", "Weekdays Only", "Weekends Only"])
 
     st.divider()
-    st.markdown("**Alert Thresholds**")
+    st.markdown("**📐 Chart Granularity**")
+    granularity = st.radio(
+        "Timeline Resolution",
+        ["15-Minute", "Hourly", "Daily"],
+        index=1,
+        help="Controls the Capacity Utilization Timeline chart resolution"
+    )
+
+    st.divider()
+    st.markdown("**⚡ Alert Thresholds**")
     cong_thresh = st.slider("Congestion OLI", 0.50, 1.00, 0.85, 0.05)
     idle_thresh  = st.slider("Idle OLI", 0.00, 0.30, 0.05, 0.01)
 
@@ -182,13 +207,13 @@ with st.sidebar:
 
 # ── Filter ────────────────────────────────────────────────────────────────────
 def filt(df):
-    df = df[df['year'].isin(sel_years)]
+    df = df[(df["Timestamp"] >= sel_start) & (df["Timestamp"] <= sel_end)]
     if sel_season != "All":
-        df = df[df['season'] == sel_season]
+        df = df[df["season"] == sel_season]
     if day_type == "Weekdays Only":
-        df = df[df['is_weekend'] == 0]
+        df = df[df["is_weekend"] == 0]
     elif day_type == "Weekends Only":
-        df = df[df['is_weekend'] == 1]
+        df = df[df["is_weekend"] == 1]
     return df
 
 dff = filt(df15)
@@ -210,7 +235,7 @@ t1, t2, t3, t4, t5 = st.tabs([
 # ══════════════════════════════════════════════════════════════════════════════
 with t1:
     st.markdown('<div class="tab-heading">Key Performance Indicators</div>', unsafe_allow_html=True)
-    st.caption(f"Showing **{len(dff):,}** intervals · Years: {sel_years}")
+    st.caption(f"Showing **{len(dff):,}** intervals · {sel_start.date()} → {sel_end.date()} · Season: {sel_season} · {day_type}")
 
     # ── KPI Cards ──────────────────────────────────────────────────────────
     c1, c2, c3, c4, c5 = st.columns(5)
@@ -294,8 +319,107 @@ with t1:
 with t2:
     st.markdown('<div class="tab-heading">Capacity Utilization Timeline</div>', unsafe_allow_html=True)
 
-    # ── Hourly profile ──────────────────────────────────────────────────────
-    st.markdown("#### Average Ticket Activity — Hour of Day Profile")
+    # ── Granularity-driven timeline ─────────────────────────────────────────
+    st.markdown(f"#### Capacity Utilization Timeline — **{granularity}** Resolution")
+    st.caption("Change resolution using the **Timeline Resolution** toggle in the sidebar.")
+
+    if granularity == "15-Minute":
+        # Show last 2,000 points to keep chart readable
+        plot_df = dff.sort_values("Timestamp").tail(2000).copy()
+        x_col   = "Timestamp"
+        y_sales = "sales"
+        y_red   = "redemptions"
+        y_total = "total_activity"
+        y_oli   = "oli"
+        x_title = "Timestamp (most recent 2,000 intervals shown)"
+
+    elif granularity == "Hourly":
+        plot_df = dff.copy()
+        plot_df["hour_bucket"] = plot_df["Timestamp"].dt.floor("h")
+        plot_df = (plot_df.groupby("hour_bucket").agg(
+            sales=("sales","sum"),
+            redemptions=("redemptions","sum"),
+            total_activity=("total_activity","sum"),
+            oli=("oli","mean"),
+        ).reset_index())
+        x_col   = "hour_bucket"
+        y_sales = "sales"
+        y_red   = "redemptions"
+        y_total = "total_activity"
+        y_oli   = "oli"
+        x_title = "Hour"
+
+    else:  # Daily
+        plot_df = dff.copy()
+        plot_df["date_only"] = plot_df["Timestamp"].dt.date
+        plot_df = (plot_df.groupby("date_only").agg(
+            sales=("sales","sum"),
+            redemptions=("redemptions","sum"),
+            total_activity=("total_activity","sum"),
+            oli=("oli","mean"),
+        ).reset_index())
+        plot_df["date_only"] = pd.to_datetime(plot_df["date_only"])
+        x_col   = "date_only"
+        y_sales = "sales"
+        y_red   = "redemptions"
+        y_total = "total_activity"
+        y_oli   = "oli"
+        x_title = "Date"
+
+    fig = make_subplots(
+        rows=2, cols=1, shared_xaxes=True,
+        row_heights=[0.65, 0.35],
+        vertical_spacing=0.08,
+        subplot_titles=["Total Ticket Activity (Sales + Redemptions)", "Operational Load Index (OLI)"]
+    )
+    fig.add_trace(go.Scatter(
+        x=plot_df[x_col], y=plot_df[y_total],
+        name="Total Activity", mode="lines",
+        line=dict(color=C_PRIMARY, width=1.8),
+        fill="tozeroy", fillcolor="rgba(27,79,138,0.12)"
+    ), row=1, col=1)
+    fig.add_trace(go.Scatter(
+        x=plot_df[x_col], y=plot_df[y_oli],
+        name="OLI", mode="lines",
+        line=dict(color=C_ACCENT, width=1.8)
+    ), row=2, col=1)
+    # Threshold lines on OLI panel
+    fig.add_hline(y=cong_thresh, line_dash="dot", line_color=C_RED,
+                  annotation_text=f"Congestion ≥{cong_thresh}", annotation_font_color=C_RED,
+                  row=2, col=1)
+    fig.add_hline(y=idle_thresh, line_dash="dot", line_color=C_GREY,
+                  annotation_text=f"Idle ≤{idle_thresh}", annotation_font_color=C_GREY,
+                  row=2, col=1)
+    fig.update_xaxes(title_text=x_title, row=2, col=1, gridcolor="#ECECEC")
+    fig.update_yaxes(title_text="Tickets", row=1, col=1, gridcolor="#ECECEC")
+    fig.update_yaxes(title_text="OLI", row=2, col=1, gridcolor="#ECECEC")
+    fig.update_layout(
+        height=520,
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(family="Arial, sans-serif", size=13, color="#2C3E50"),
+        margin=dict(t=60, b=40, l=60, r=30),
+        showlegend=False,
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    finding(
+        "The Threshold Lines Show Exactly When the System Is Under Stress",
+        "The <b>red dotted line</b> on the OLI panel marks the congestion threshold (default 0.85). "
+        "The <b>grey dotted line</b> marks idle capacity. Any OLI spike above red = overloaded interval. "
+        "Any reading below grey = wasted capacity. Use the sidebar sliders to tighten or loosen these thresholds "
+        "and see how the operational picture changes."
+    )
+
+    insight(
+        "Switch between <b>15-Minute, Hourly, and Daily</b> resolution in the sidebar to zoom in or out. "
+        "15-Minute shows raw granularity (last 2,000 intervals). Hourly and Daily show the full date-filtered range. "
+        "All three panels share the same threshold lines for consistency."
+    )
+
+    st.markdown("---")
+
+    # ── Hourly average profile (always shown as context) ───────────────────
+    st.markdown("#### Average Activity Profile — Hour of Day")
     hourly = dff.groupby("hour").agg(
         avg_sales=("sales", "mean"),
         avg_redemptions=("redemptions", "mean"),
@@ -315,17 +439,16 @@ with t2:
         line=dict(color=C_ACCENT, width=2.5),
         marker=dict(size=5)
     ))
-    # Peak zone shading
     fig.add_vrect(x0=11, x1=15, fillcolor=C_RED, opacity=0.07,
                   annotation_text="Peak Zone", annotation_position="top left",
                   annotation_font_color=C_RED)
     fig.update_layout(
-        title="Average Sales & Redemptions per 15-min Interval by Hour",
+        title="Average Sales & Redemptions per Interval by Hour of Day",
         xaxis=dict(tickvals=list(range(0,24)), title="Hour of Day", gridcolor="#ECECEC"),
         yaxis=dict(title="Avg Tickets / Interval", gridcolor="#ECECEC"),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
     )
-    apply_layout(fig, 400)
+    apply_layout(fig, 380)
     st.plotly_chart(fig, use_container_width=True)
 
     finding(
