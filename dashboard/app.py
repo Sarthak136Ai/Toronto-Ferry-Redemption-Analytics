@@ -599,7 +599,7 @@ with t3:
     fig = px.imshow(
         pivot_oli, color_continuous_scale="RdYlGn_r",
         labels=dict(x="Month", y="Hour of Day", color="Avg OLI"),
-        aspect="auto", zmin=0, zmax=0.6
+        aspect="auto"
     )
     fig.update_layout(
         title="OLI Heatmap — Red = High Load (Congestion), Green = Low Load (Idle)",
@@ -626,7 +626,7 @@ with t3:
     fig = px.imshow(
         pivot_cong, color_continuous_scale="Reds",
         labels=dict(x="Day", y="Hour of Day", color="% Congested"),
-        aspect="auto", zmin=0, zmax=50
+        aspect="auto"
     )
     fig.update_layout(
         title="Congestion Frequency (%) — Saturday & Sunday Midday Carry the Highest Strain",
@@ -653,7 +653,7 @@ with t3:
     fig = px.imshow(
         pivot_idle, color_continuous_scale="Blues",
         labels=dict(x="Month", y="Hour of Day", color="% Idle"),
-        aspect="auto", zmin=0, zmax=80
+        aspect="auto"
     )
     fig.update_layout(
         title="Idle Capacity Heatmap — Darker Blue = More Wasted Operational Capacity",
@@ -847,7 +847,7 @@ with t4:
         pivot_hc,
         color_continuous_scale="RdYlGn",
         labels=dict(x="Season", y="Time Band", color="Avg OLI"),
-        aspect="auto", zmin=0, zmax=0.5,
+        aspect="auto",
         title="Avg OLI by Time Band × Season — Green = Low Utilization = Operational Waste"
     )
     fig.update_layout(coloraxis_colorbar=dict(title="Avg OLI"))
